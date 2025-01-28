@@ -111,7 +111,6 @@ def prepare_data(data, save_embeddings=True):
     index.add(np.array(embeddings, dtype=np.float32))
 
     if save_embeddings:
-        # ذخیره بردارها، پایگاه داده و متادیتا
         np.save(EMBEDDINGS_FILE, embeddings)
         faiss.write_index(index, INDEX_FILE)
         save_data_to_path(metadata, METADATA_FILE)
@@ -120,11 +119,9 @@ def prepare_data(data, save_embeddings=True):
     return index, metadata, model
 
 def load_faiss_index():
-    # بررسی وجود فایل‌ها
     if not (os.path.exists(EMBEDDINGS_FILE) and os.path.exists(INDEX_FILE) and os.path.exists(METADATA_FILE)):
         raise FileNotFoundError("One or more files (embeddings, index, metadata) are missing.")
 
-    # بارگذاری پایگاه داده و متادیتا
     index = faiss.read_index(INDEX_FILE)
     with open(METADATA_FILE, "r", encoding="utf-8") as f:
         metadata = json.load(f)
