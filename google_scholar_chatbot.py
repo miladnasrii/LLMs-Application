@@ -7,7 +7,39 @@ import numpy as np
 import json
 import os
 
-def scholar_data(keywords=["Computer Science Iran", "Artificial Intelligence Iran", "Computer Engineering Iran", "Software Engineering Iran"]):
+EMBEDDINGS_FILE = "faiss_embeddings.npy (path)"
+INDEX_FILE = "faiss_index.faiss (path)"
+METADATA_FILE = "faiss_metadata.json (path)"
+
+fields = [
+    "Computer Science",
+    "Artificial Intelligence",
+    "Computer Engineering",
+    "Software Engineering",
+]
+
+locations = [
+    "University of Kurdistan, Sanandaj",
+]
+
+keywords_list = [f"{field} {location}" for field in fields for location in locations]
+
+keywords_file = "keywords.txt (path)"
+with open(keywords_file, "w") as f:
+    for i in keywords_list:
+        f.write(i + "\n")
+
+print("Keywords saved to:", keywords_file)
+
+file_path = "keywords.txt (path)"
+def load_keywords(file_path):
+    with open(file_path, "r", encoding="utf-8") as file:
+        keywords = [line.strip() for line in file.readlines() if line.strip()]
+    return keywords
+
+keywords = load_keywords(keywords_file)
+
+def fetch_scholar_data(keywords):
     authors = []
     seen_authors = set()
 
@@ -22,12 +54,9 @@ def scholar_data(keywords=["Computer Science Iran", "Artificial Intelligence Ira
                 affiliation = profile.get("affiliation", "")
                 publications = profile.get("publications", [])
 
-
                 if name not in seen_authors and any(
                     field in affiliation for field in ["Computer Science", "Artificial Intelligence", "Computer Engineering", "Software Engineering"]
-
                 ):
-
                     recent_papers = sorted(
                         [
                             {
@@ -62,19 +91,7 @@ def save_data_to_path(data, file_path):
         json.dump(data, f, ensure_ascii=False, indent=4)
     print("Saved!")
 
-data = fetch_scholar_data()
-
-output_path = "json dataset output path"
-save_data_to_path(data, output_path)
-
-dataset_path = "json dataset input path"
-
-def load_dataset(file_path):
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return data
-
-def prepare_data(data):
+def prepare_data(data, save_embeddings=True):
     texts = []
     metadata = []
 
@@ -93,9 +110,28 @@ def prepare_data(data):
     index = faiss.IndexFlatL2(dimension)
     index.add(np.array(embeddings, dtype=np.float32))
 
+    if save_embeddings:
+        # ذخیره بردارها، پایگاه داده و متادیتا
+        np.save(EMBEDDINGS_FILE, embeddings)
+        faiss.write_index(index, INDEX_FILE)
+        save_data_to_path(metadata, METADATA_FILE)
+        print("Index and metadata saved.")
+
     return index, metadata, model
 
-def search_faiss_by_name(name_query, top_k=5):
+def load_faiss_index():
+    # بررسی وجود فایل‌ها
+    if not (os.path.exists(EMBEDDINGS_FILE) and os.path.exists(INDEX_FILE) and os.path.exists(METADATA_FILE)):
+        raise FileNotFoundError("One or more files (embeddings, index, metadata) are missing.")
+
+    # بارگذاری پایگاه داده و متادیتا
+    index = faiss.read_index(INDEX_FILE)
+    with open(METADATA_FILE, "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+
+    return index, metadata
+
+def search_faiss_by_name(name_query, index, metadata, model, top_k=5):
     query_vector = model.encode([name_query])
     query_vector = np.array(query_vector, dtype=np.float32)
 
@@ -131,7 +167,7 @@ def chatbot(index, metadata, model):
             print("Please specify a name for the search!")
             continue
 
-        results = search_faiss_by_name(name_query)
+        results = search_faiss_by_name(name_query, index, metadata, model)
         if results:
             print("Results:")
             for result in results:
@@ -149,7 +185,13 @@ def chatbot(index, metadata, model):
         else:
             print("No results found!")
 
-data = load_dataset(dataset_path)
-index, metadata, model = prepare_data(data)
-chatbot(index, metadata, model)
+if os.path.exists(INDEX_FILE) and os.path.exists(METADATA_FILE):
+    print("Loading existing FAISS index and metadata...")
+    index, metadata = load_faiss_index()
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+else:
+    print("Fetching data and creating FAISS index...")
+    data = fetch_scholar_data(keywords)
+    index, metadata, model = prepare_data(data, save_embeddings=True)
 
+chatbot(index, metadata, model)
